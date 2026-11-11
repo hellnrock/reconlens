@@ -6,6 +6,9 @@ Variables de entorno:
                deshabilitado (falla cerrado).
   PROXY_HOPS   Cuántos proxies confiables hay delante (default 1). Se toma la IP en la posición
                -PROXY_HOPS de X-Forwarded-For. Verifícalo con el honeypot (ver README del cambio).
+  HONEYPOT_MODE  "stealth" (default) o "banner". stealth: responde un 404 genérico, sin revelar que
+               hay trampa ni mostrar la IP. banner: página 403 de marca que muestra la IP (útil para
+               verificar PROXY_HOPS o como disuasión). En ambos modos se registra el CANARY en el log.
   PORT         Puerto (Render lo define).
 
 Dependencias: fastapi, uvicorn, httpx, dnspython>=2.0
@@ -42,6 +45,10 @@ app = FastAPI(title="ReconLens", version="0.2.0", docs_url=None, redoc_url=None,
 
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 PROXY_HOPS = int(os.environ.get("PROXY_HOPS", "1"))
+HONEYPOT_MODE = os.environ.get("HONEYPOT_MODE", "stealth").strip().lower()
+if HONEYPOT_MODE not in ("stealth", "banner"):
+    log.warning("HONEYPOT_MODE=%r no válido: usando 'stealth'.", HONEYPOT_MODE)
+    HONEYPOT_MODE = "stealth"
 
 if not ADMIN_TOKEN:
     log.warning("ADMIN_TOKEN no definido: nivel admin deshabilitado.")
@@ -529,6 +536,13 @@ CANARY_PATHS = [
 ]
 TARPIT_SLOTS = asyncio.Semaphore(50)
 
+# Respuesta del modo stealth: un 404 de lo más ordinario, sin marca ni pistas.
+NOT_FOUND_HTML = (
+    "<!doctype html>\n<html>\n<head><title>404 Not Found</title></head>\n"
+    "<body>\n<h1>Not Found</h1>\n"
+    "<p>The requested URL was not found on this server.</p>\n</body>\n</html>\n"
+)
+
 CANARY_HTML = """<!doctype html>
 <html>
 <head>
@@ -566,14 +580,21 @@ async def canary_trap(request: Request):
     ua = request.headers.get("user-agent", "unknown")[:200]
     # %r neutraliza saltos de línea (log injection)
     canary_log.warning(
-        "CANARY method=%s path=%r ip=%s xff=%r ua=%r",
-        request.method, request.url.path, ip,
+        "CANARY mode=%s method=%s path=%r ip=%s xff=%r ua=%r",
+        HONEYPOT_MODE, request.method, request.url.path, ip,
         request.headers.get("x-forwarded-for", "")[:200], ua,
     )
 
+    # stealth: demora corta, que no destaque; banner: tarpit visible de 3 s
+    delay = 1 if HONEYPOT_MODE == "stealth" else 3
     if not TARPIT_SLOTS.locked():  # tarpit acotado: no te conviertas en tu propio DoS
         async with TARPIT_SLOTS:
-            await asyncio.sleep(3)
+            await asyncio.sleep(delay)
+
+    if HONEYPOT_MODE == "stealth":
+        # HEAD sin cuerpo; el resto, un 404 genérico que no delata nada
+        body = "" if request.method == "HEAD" else NOT_FOUND_HTML
+        return HTMLResponse(body, status_code=404)
 
     return HTMLResponse(
         CANARY_HTML.replace("{{IP}}", html.escape(ip)),
@@ -609,6 +630,7 @@ INDEX_TEMPLATE = """<!doctype html>
     --border: #634F5F40;
     --border-focus: #C7B182;
     --muted: #8a7a6a;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   body {
@@ -722,7 +744,15 @@ INDEX_TEMPLATE = """<!doctype html>
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     color: var(--gold);
+    scrollbar-width: thin;
+    scrollbar-color: var(--brand) var(--surface);
   }
+  .code-out::-webkit-scrollbar { width: 10px; height: 10px; }
+  .code-out::-webkit-scrollbar-track { background: var(--surface); }
+  .code-out::-webkit-scrollbar-thumb { background: var(--brand); border: 2px solid var(--surface); border-radius: 6px; }
+  .code-out::-webkit-scrollbar-thumb:hover { background: var(--gold-dim, #8f7f5c); }
+  .code-out::-webkit-scrollbar-corner { background: var(--surface); }
+  .code-actions { display: flex; gap: 8px; }
   .indicator { display: none; color: var(--gold-bright); font-size: 11px; letter-spacing: 0.05em; animation: pulse 1.5s infinite; }
   .indicator.on { display: inline-block; }
   @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
@@ -764,7 +794,10 @@ INDEX_TEMPLATE = """<!doctype html>
     <div class="code-block">
       <div class="code-header">
         <span>RESULT</span>
-        <button type="button" id="copy-btn">COPY</button>
+        <div class="code-actions">
+          <button type="button" id="clear-btn">CLEAR</button>
+          <button type="button" id="copy-btn">COPY</button>
+        </div>
       </div>
       <pre id="out" class="code-out">// Waiting for target domain input...</pre>
     </div>
@@ -854,7 +887,14 @@ INDEX_TEMPLATE = """<!doctype html>
       }
       render();
     })();
-        document.getElementById('copy-btn').addEventListener('click', function() {
+        document.getElementById('clear-btn').addEventListener('click', function() {
+      const dom = document.getElementById('domain');
+      document.getElementById('out').textContent = '// Waiting for target domain input...';
+      dom.value = '';
+      dom.focus();
+    });
+
+    document.getElementById('copy-btn').addEventListener('click', function() {
       const el = document.getElementById('out');
       const text = el.innerText || el.textContent;
       navigator.clipboard.writeText(text).then(() => {
