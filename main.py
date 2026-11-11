@@ -720,6 +720,10 @@ INDEX_TEMPLATE = """<!doctype html>
       </div>
     </details>
 
+        <div class="code-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;letter-spacing:0.08em;color:var(--muted);">
+      <span>RESULT</span>
+      <button type="button" id="copy-btn" style="background:transparent;border:1px solid var(--gold);color:var(--gold);padding:3px 10px;font-size:10px;letter-spacing:0.1em;cursor:pointer;border-radius:3px;">COPY</button>
+    </div>
     <pre id="out">// Waiting for target domain input...</pre>
 
     <div class="note">
