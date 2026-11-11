@@ -161,26 +161,90 @@ async def index():
 <title>ReconLens — passive recon</title>
 <script src="https://unpkg.com/htmx.org@2.0.3"></script>
 <style>
-  body{font-family:system-ui;background:#0d1117;color:#e6edf3;max-width:900px;margin:40px auto;padding:0 20px}
-  h1{color:#58a6ff} input{background:#161b22;border:1px solid #30363d;color:#e6edf3;padding:10px;border-radius:6px;width:60%}
-  button{background:#238636;color:#fff;border:0;padding:10px 20px;border-radius:6px;cursor:pointer}
-  pre{background:#161b22;border:1px solid #30363d;padding:16px;border-radius:6px;overflow:auto;font-size:13px}
-  .note{color:#8b949e;font-size:13px;margin-top:20px}
+  /* Branding Hellnrock */
+  body {
+    font-family: monospace, system-ui; 
+    background-color: #101010; 
+    color: #C7B182; 
+    max-width: 900px; 
+    margin: 40px auto; 
+    padding: 0 20px;
+  }
+  h1 { 
+    color: #C7B182; 
+    border-bottom: 2px solid #634F5F2E; 
+    padding-bottom: 10px;
+  }
+  p { 
+    color: #634F5F; 
+    font-weight: bold;
+  }
+  form {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  input {
+    background-color: #0d0d0d; 
+    border: 1px solid #634F5F; 
+    color: #C7B182; 
+    padding: 12px; 
+    border-radius: 4px; 
+    width: 60%;
+    outline: none;
+  }
+  input:focus {
+    border-color: #C7B182;
+  }
+  button {
+    background-color: #634F5F; 
+    color: #C7B182; 
+    border: 1px solid #C7B182; 
+    padding: 10px 20px; 
+    border-radius: 4px; 
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s ease;
+  }
+  button:hover {
+    background-color: #C7B182;
+    color: #101010;
+  }
+  pre {
+    background-color: #0d0d0d; 
+    border: 1px solid #634F5F2E; 
+    color: #C7B182;
+    padding: 16px; 
+    border-radius: 4px; 
+    overflow: auto; 
+    font-size: 13px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+  }
+  .note {
+    color: #634F5F; 
+    font-size: 12px; 
+    margin-top: 30px;
+    border-top: 1px solid #634F5F2E;
+    padding-top: 15px;
+  }
 </style>
 </head>
 <body>
   <h1>🔍 ReconLens</h1>
   <p>Passive reconnaissance. No active scanning. No payloads.</p>
+  
   <form hx-get="/api/passive/domain" hx-target="#out" hx-indicator="#load">
     <input name="domain" placeholder="labs.hellnrock.com" required>
     <button>Analyze</button>
-    <span id="load" class="htmx-indicator">⏳...</span>
+    <span id="load" class="htmx-indicator" style="color: #C7B182;">⏳...</span>
   </form>
+  
   <pre id="out"></pre>
-  <p class="note">
+  
+  <div class="note">
     All data from public sources (crt.sh, HackerTarget, Shodan IDB, Wayback, DNS).<br>
     <i>Nota: Si la app está dormida (Render Free Tier), la primera carga puede tardar hasta 50s.</i>
-  </p>
+  </div>
 </body>
 </html>
 """
