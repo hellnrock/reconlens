@@ -6,7 +6,7 @@ Variables de entorno:
                deshabilitado (falla cerrado).
   PROXY_HOPS   Cuántos proxies confiables hay delante (default 1). Se toma la IP en la posición
                -PROXY_HOPS de X-Forwarded-For. Verifícalo con el honeypot (ver README del cambio).
-  HONEYPOT_MODE  "stealth" (default) o "banner". stealth: responde un 404 genérico, sin revelar que
+  HONEYPOT_MODE  "banner" (default) o "stealth". stealth: responde un 404 genérico, sin revelar que
                hay trampa ni mostrar la IP. banner: página 403 de marca que muestra la IP (útil para
                verificar PROXY_HOPS o como disuasión). En ambos modos se registra el CANARY en el log.
   PORT         Puerto (Render lo define).
@@ -249,9 +249,12 @@ async def fetch_limited(client: httpx.AsyncClient, url: str, params: dict, max_b
 
 async def crtsh(domain: str) -> dict:
     try:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as c:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=False) as c:
             body = await fetch_limited(
-                c, "https://crt.sh/", {"q": f"%.{domain}", "output": "json"}, MAX_UPSTREAM_BYTES
+                c,
+                "https://crt.sh/",
+                {"q": f"%.{domain}", "output": "json", "deduplicate": "Y"},
+                MAX_UPSTREAM_BYTES,
             )
         subs = set()
         for e in json.loads(body):
@@ -298,16 +301,50 @@ async def hackertarget(domain: str) -> dict:
         return {"status": "error", "source": "hackertarget", "reason": type(e).__name__, "items": []}
 
 
-async def find_subdomains(domain: str) -> dict:
-    attempts = []
-    for fn in (crtsh, hackertarget):
+def _is_error(res: dict) -> bool:
+    return res.get("status") == "error"
+
+
+async def with_retry(fn, domain: str, retry_if=_is_error, pause: float = 2.0) -> dict:
+    """Un solo reintento, solo si retry_if(resultado) es verdadero. Los fallos de estas fuentes
+    suelen ser intermitentes (timeout, 503), pero más de un reintento haría esperar demasiado."""
+    res = await fn(domain)
+    if retry_if(res):
+        await asyncio.sleep(pause)
         res = await fn(domain)
-        if res["status"] == "ok":
-            res["attempts"] = attempts
-            return res
-        attempts.append({"source": res["source"], "status": res["status"], "reason": res.get("reason")})
-    status = "empty" if all(a["status"] == "empty" for a in attempts) else "error"
-    return {"status": status, "source": None, "items": [], "attempts": attempts}
+    return res
+
+
+async def find_subdomains(domain: str) -> dict:
+    """crt.sh y HackerTarget en paralelo; se UNEN los resultados (cada fuente ve cosas distintas)."""
+    results = await asyncio.gather(with_retry(crtsh, domain), hackertarget(domain))
+
+    merged: set = set()
+    attempts = []
+    for res in results:
+        merged.update(res["items"])
+        attempts.append(
+            {
+                "source": res["source"],
+                "status": res["status"],
+                "reason": res.get("reason"),
+                "count": len(res["items"]),
+            }
+        )
+
+    items = sorted(merged)[:SUBS_FETCH_LIMIT]
+    failed = [a for a in attempts if a["status"] == "error"]
+    contributing = [a["source"] for a in attempts if a["count"] > 0]
+    if items:
+        status = "partial" if failed else "ok"  # partial: hay datos, pero una fuente falló
+    else:
+        status = "error" if failed else "empty"
+    return {
+        "status": status,
+        "source": "+".join(contributing) if contributing else None,
+        "items": items,
+        "attempts": attempts,
+    }
 
 
 async def dns_records(domain: str) -> dict:
@@ -425,6 +462,131 @@ async def wayback(domain: str) -> dict:
         return {"status": "error", "reason": type(e).__name__, "urls": []}
 
 
+# ---------- SEGURIDAD DE CORREO (solo admin) ----------
+# SPF + DMARC + DKIM por selectores comunes. Son consultas DNS al dominio objetivo (visibles para sus
+# nameservers), por eso solo corren con token admin. Que un selector DKIM no aparezca NO prueba que no
+# haya DKIM: el selector puede tener cualquier nombre.
+
+DKIM_SELECTORS = (
+    "default", "google", "selector1", "selector2", "k1", "k2", "s1", "s2",
+    "mail", "dkim", "brevo", "hostingermail-a", "hostingermail-b", "hostingermail-c",
+)
+
+
+def parse_tags(text: str) -> dict:
+    tags = {}
+    for part in text.split(";"):
+        key, sep, val = part.strip().partition("=")
+        if sep:
+            tags[key.strip().lower()] = val.strip()
+    return tags
+
+
+def analyze_spf(txts: list) -> dict:
+    records = [t for t in txts if t.lower().startswith("v=spf1")]
+    if not records:
+        return {"status": "missing"}
+    rec = records[0]
+    tokens = rec.split()[1:]
+    all_tok = next((t for t in reversed(tokens) if re.fullmatch(r"[+\-~?]?all", t.lower())), None)
+    mech = {"-all": "fail (strict)", "~all": "softfail", "?all": "neutral", "+all": "pass (open to anyone)", "all": "pass (open to anyone)"}
+    lookups = 0
+    for t in tokens:
+        low = t.lower().lstrip("+-~?")
+        if low.startswith(("include:", "exists:", "redirect=")) or low in ("a", "mx", "ptr") or low.startswith(("a:", "a/", "mx:", "mx/", "ptr:")):
+            lookups += 1
+    return {
+        "status": "found",
+        "record": rec[:512],
+        "multiple_records": len(records) > 1,
+        "all": all_tok.lower() if all_tok else None,
+        "all_meaning": mech.get(all_tok.lower()) if all_tok else "no 'all' mechanism",
+        "includes": [t.split(":", 1)[1] for t in tokens if t.lower().startswith("include:")][:20],
+        "dns_lookup_terms_top_level": lookups,  # piso, no total: los includes anidados también cuentan (límite 10)
+    }
+
+
+def analyze_dmarc(txts: list) -> dict:
+    records = [t for t in txts if t.lower().startswith("v=dmarc1")]
+    if not records:
+        return {"status": "missing"}
+    tags = parse_tags(records[0])
+    return {
+        "status": "found",
+        "record": records[0][:512],
+        "policy": tags.get("p"),
+        "subdomain_policy": tags.get("sp"),
+        "pct": tags.get("pct"),
+        "rua": tags.get("rua"),
+        "adkim": tags.get("adkim"),
+        "aspf": tags.get("aspf"),
+    }
+
+
+async def _txt_lookup(resolver, name: str):
+    """(lista de TXT, error|None). Une los fragmentos de cada registro; sigue CNAMEs."""
+    try:
+        ans = await resolver.resolve(name, "TXT")
+        return ["".join(s.decode("utf-8", errors="replace") for s in r.strings) for r in ans], None
+    except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
+        return [], None
+    except dns.exception.Timeout:
+        return [], "timeout"
+    except Exception as e:
+        return [], type(e).__name__
+
+
+async def email_security(domain: str) -> dict:
+    resolver = dns.asyncresolver.Resolver()
+    resolver.lifetime = 4.0
+    resolver.timeout = 2.0
+
+    root, dmarc, *dkim = await asyncio.gather(
+        _txt_lookup(resolver, domain),
+        _txt_lookup(resolver, f"_dmarc.{domain}"),
+        *(_txt_lookup(resolver, f"{sel}._domainkey.{domain}") for sel in DKIM_SELECTORS),
+    )
+    spf = analyze_spf(root[0])
+    dm = analyze_dmarc(dmarc[0])
+    found = [sel for sel, (txts, _) in zip(DKIM_SELECTORS, dkim) if any("p=" in t.lower() for t in txts)]
+
+    issues = []
+    if spf["status"] == "missing":
+        issues.append("SPF missing")
+    else:
+        if spf.get("multiple_records"):
+            issues.append("Multiple SPF records (invalid: SPF permits only one)")
+        if spf.get("all") in ("+all", "all"):
+            issues.append("SPF allows any sender (+all)")
+        elif spf.get("all") is None:
+            issues.append("SPF has no 'all' mechanism")
+        elif spf.get("all") == "?all":
+            issues.append("SPF is neutral (?all): offers no protection")
+        if spf.get("dns_lookup_terms_top_level", 0) >= 8:
+            issues.append("SPF uses many DNS lookups; the limit is 10 including nested includes")
+    if dm["status"] == "missing":
+        issues.append("DMARC missing")
+    elif (dm.get("policy") or "").lower() == "none":
+        issues.append("DMARC policy is p=none (monitoring only, no enforcement)")
+    errors = sorted({e for _, e in [root, dmarc, *dkim] if e})
+    return {
+        "status": "ok" if not errors else "partial",
+        "spf": spf,
+        "dmarc": dm,
+        "dkim": {
+            "selectors_found": found,
+            "selectors_checked": len(DKIM_SELECTORS),
+            "note": "Only common selector names are tried; a selector not listed here may still exist.",
+        },
+        "issues": issues,
+        "dns_errors": errors,
+    }
+
+
+async def _admin_only() -> dict:
+    return {"status": "admin_only"}
+
+
 # ---------- ENSAMBLADO POR NIVEL ----------
 
 DISCLAIMER = (
@@ -434,7 +596,7 @@ DISCLAIMER = (
 )
 
 
-def assemble(domain: str, admin: bool, dns_res: dict, subs: dict, shodan: dict, wb: dict) -> dict:
+def assemble(domain: str, admin: bool, dns_res: dict, subs: dict, shodan: dict, wb: dict, email_sec: dict) -> dict:
     lim = ADMIN_LIMITS if admin else USER_LIMITS
 
     findings = []
@@ -456,6 +618,15 @@ def assemble(domain: str, admin: bool, dns_res: dict, subs: dict, shodan: dict, 
     if lim["findings"] is not None:
         findings = findings[: lim["findings"]]
 
+    # Avisos: que "0 hallazgos" no se confunda con "no revisado".
+    warnings = []
+    for a in subs.get("attempts", []):
+        if a["status"] == "error":
+            warnings.append(f"{a['source']} failed ({a['reason']}): subdomain list may be incomplete.")
+    if wb.get("status") == "error":
+        warnings.append(f"wayback failed ({wb.get('reason')}): archived URLs were NOT checked, so findings=0 means not reviewed.")
+    findings_status = "checked" if wb.get("status") == "ok" else "not_checked"
+
     sub_items = subs.get("items", [])
     result = {
         "domain": domain,
@@ -470,6 +641,7 @@ def assemble(domain: str, admin: bool, dns_res: dict, subs: dict, shodan: dict, 
             "items": sub_items[: lim["subs"]],
         },
         "shodan_internetdb": shodan,
+        "email_security": email_sec,
         "wayback": {
             "status": wb["status"],
             "reason": wb.get("reason"),
@@ -479,6 +651,8 @@ def assemble(domain: str, admin: bool, dns_res: dict, subs: dict, shodan: dict, 
         },
         "findings": findings,
         "findings_total": findings_total,
+        "findings_status": findings_status,
+        "warnings": warnings,
         "disclaimer": DISCLAIMER,
     }
     return result if admin else sanitize_data(result)
@@ -513,13 +687,25 @@ async def passive(request: Request, domain: str = Query(..., min_length=3, max_l
     except asyncio.TimeoutError:
         raise HTTPException(503, "busy, retry shortly", headers={"Retry-After": "10"})
     try:
-        dns_res, subs, wb = await asyncio.gather(dns_records(domain), find_subdomains(domain), wayback(domain))
+        dns_res, subs, wb = await asyncio.gather(
+            dns_records(domain),
+            find_subdomains(domain),
+            # Wayback devuelve 503 con frecuencia: un reintento solo para errores 5xx
+            with_retry(
+                wayback,
+                domain,
+                retry_if=lambda r: r.get("status") == "error" and str(r.get("reason", "")).startswith("http_5"),
+            ),
+        )
         lim = ADMIN_LIMITS if admin else USER_LIMITS
-        shodan = await shodan_idb(dns_res["records"]["A"], lim["shodan_ips"])
+        shodan, email_sec = await asyncio.gather(
+            shodan_idb(dns_res["records"]["A"], lim["shodan_ips"]),
+            email_security(domain) if admin else _admin_only(),
+        )
     finally:
         SCAN_SEM.release()
 
-    return JSONResponse(assemble(domain, admin, dns_res, subs, shodan, wb))
+    return JSONResponse(assemble(domain, admin, dns_res, subs, shodan, wb, email_sec))
 
 
 @app.get("/healthz")
