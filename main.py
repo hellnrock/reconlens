@@ -669,17 +669,58 @@ INDEX_TEMPLATE = """<!doctype html>
   details { margin-bottom: 24px; color: var(--muted); font-size: 11px; letter-spacing: 0.06em; }
   summary { cursor: pointer; }
   details .input-wrapper { margin-top: 10px; }
-  #out {
+  .code-block {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 18px;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  .code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 14px;
+    background: var(--surface-deep, #0a0a0a);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+  .code-header button {
+    font-family: inherit;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--gold);
+    padding: 6px 12px;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .code-header button:hover {
+    border-color: var(--gold);
+    background: color-mix(in srgb, var(--gold) 8%, transparent);
+    box-shadow: none;
+    color: var(--gold);
+  }
+  .code-header button:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+  }
+  .code-out {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    padding: 16px;
     min-height: 140px;
+    max-height: 60vh;
     font-size: 12px;
     line-height: 1.6;
     overflow: auto;
     white-space: pre-wrap;
-    word-break: break-word;
+    overflow-wrap: anywhere;
     color: var(--gold);
   }
   .indicator { display: none; color: var(--gold-bright); font-size: 11px; letter-spacing: 0.05em; animation: pulse 1.5s infinite; }
@@ -720,11 +761,13 @@ INDEX_TEMPLATE = """<!doctype html>
       </div>
     </details>
 
-        <div class="code-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-size:11px;letter-spacing:0.08em;color:var(--muted);">
-      <span>RESULT</span>
-      <button type="button" id="copy-btn" style="background:transparent;border:1px solid var(--gold);color:var(--gold);padding:3px 10px;font-size:10px;letter-spacing:0.1em;cursor:pointer;border-radius:3px;">COPY</button>
+    <div class="code-block">
+      <div class="code-header">
+        <span>RESULT</span>
+        <button type="button" id="copy-btn">COPY</button>
+      </div>
+      <pre id="out" class="code-out">// Waiting for target domain input...</pre>
     </div>
-    <pre id="out">// Waiting for target domain input...</pre>
 
     <div class="note">
       Public sources: <span>crt.sh</span> · <span>HackerTarget</span> · <span>Shodan InternetDB</span> · <span>Wayback</span> · <span>DNS</span><br>
