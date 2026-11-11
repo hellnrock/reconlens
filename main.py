@@ -45,10 +45,10 @@ app = FastAPI(title="ReconLens", version="0.2.0", docs_url=None, redoc_url=None,
 
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 PROXY_HOPS = int(os.environ.get("PROXY_HOPS", "1"))
-HONEYPOT_MODE = os.environ.get("HONEYPOT_MODE", "stealth").strip().lower()
+HONEYPOT_MODE = os.environ.get("HONEYPOT_MODE", "banner").strip().lower()
 if HONEYPOT_MODE not in ("stealth", "banner"):
-    log.warning("HONEYPOT_MODE=%r no válido: usando 'stealth'.", HONEYPOT_MODE)
-    HONEYPOT_MODE = "stealth"
+    log.warning("HONEYPOT_MODE=%r no válido: usando 'banner'.", HONEYPOT_MODE)
+    HONEYPOT_MODE = "banner"
 
 if not ADMIN_TOKEN:
     log.warning("ADMIN_TOKEN no definido: nivel admin deshabilitado.")
