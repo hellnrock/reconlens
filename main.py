@@ -158,93 +158,244 @@ async def index():
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>ReconLens — passive recon</title>
+<title>ReconLens — HellNRock Labs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://unpkg.com/htmx.org@2.0.3"></script>
 <style>
-  /* Branding Hellnrock */
+  :root {
+    --bg: #0a0a0a;
+    --surface: #121212;
+    --surface-hover: #181818;
+    --text: #C7B182;
+    --text-bright: #E5D5B3;
+    --muted: #7A6C5D;
+    --accent: #634F5F;
+    --border: #332B31;
+    --border-focus: #C7B182;
+  }
+
+  * { box-sizing: border-box; }
+
   body {
-    font-family: monospace, system-ui; 
-    background-color: #101010; 
-    color: #C7B182; 
-    max-width: 900px; 
-    margin: 40px auto; 
-    padding: 0 20px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    background: var(--bg);
+    background-image: radial-gradient(circle at 1px 1px, #1c181b 1px, transparent 0);
+    background-size: 24px 24px;
+    color: var(--text);
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 60px 20px 40px;
   }
-  h1 { 
-    color: #C7B182; 
-    border-bottom: 2px solid #634F5F2E; 
-    padding-bottom: 10px;
+
+  .container {
+    width: 100%;
+    max-width: 720px;
   }
-  p { 
-    color: #634F5F; 
-    font-weight: bold;
+
+  header {
+    text-align: center;
+    margin-bottom: 48px;
   }
+
+  .logo {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 24px;
+    position: relative;
+  }
+
+  .logo svg {
+    width: 100%;
+    height: 100%;
+    stroke: var(--text);
+    stroke-width: 1.2;
+    fill: none;
+    opacity: 0.9;
+    animation: float 6s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-5px) rotate(1deg); }
+  }
+
+  h1 {
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    margin: 0 0 10px;
+    color: var(--text-bright);
+    text-transform: uppercase;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin: 0;
+  }
+
   form {
     display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
+    gap: 12px;
+    margin-bottom: 28px;
+    position: relative;
   }
+
+  .input-wrapper {
+    position: relative;
+    flex: 1;
+  }
+
   input {
-    background-color: #0d0d0d; 
-    border: 1px solid #634F5F; 
-    color: #C7B182; 
-    padding: 12px; 
-    border-radius: 4px; 
-    width: 60%;
-    outline: none;
-  }
-  input:focus {
-    border-color: #C7B182;
-  }
-  button {
-    background-color: #634F5F; 
-    color: #C7B182; 
-    border: 1px solid #C7B182; 
-    padding: 10px 20px; 
-    border-radius: 4px; 
-    cursor: pointer;
-    font-weight: bold;
-    transition: all 0.3s ease;
-  }
-  button:hover {
-    background-color: #C7B182;
-    color: #101010;
-  }
-  pre {
-    background-color: #0d0d0d; 
-    border: 1px solid #634F5F2E; 
-    color: #C7B182;
-    padding: 16px; 
-    border-radius: 4px; 
-    overflow: auto; 
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-bright);
+    padding: 14px 16px;
+    border-radius: 4px;
+    font-family: inherit;
     font-size: 13px;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    letter-spacing: 0.03em;
+    outline: none;
+    transition: all 0.2s ease;
   }
+
+  input:focus {
+    border-color: var(--border-focus);
+    background: var(--surface-hover);
+    box-shadow: 0 0 12px rgba(199, 177, 130, 0.08);
+  }
+
+  input::placeholder {
+    color: var(--muted);
+    opacity: 0.6;
+  }
+
+  button {
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--text);
+    padding: 14px 24px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+  }
+
+  button:hover {
+    background: var(--text);
+    color: var(--bg);
+    box-shadow: 0 0 15px rgba(199, 177, 130, 0.2);
+  }
+
+  #out {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+    min-height: 140px;
+    font-size: 12px;
+    line-height: 1.6;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text);
+    position: relative;
+  }
+
+  .htmx-indicator {
+    display: none;
+    color: var(--text);
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    animation: pulse 1.5s infinite;
+  }
+
+  .htmx-request .htmx-indicator {
+    display: inline-block;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; }
+    50% { opacity: 1; }
+  }
+
   .note {
-    color: #634F5F; 
-    font-size: 12px; 
-    margin-top: 30px;
-    border-top: 1px solid #634F5F2E;
-    padding-top: 15px;
+    margin-top: 40px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.8;
+    letter-spacing: 0.04em;
+  }
+
+  .note span {
+    color: var(--accent);
+  }
+
+  footer {
+    margin-top: 48px;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    text-transform: uppercase;
+    opacity: 0.6;
   }
 </style>
 </head>
 <body>
-  <h1>🔍 ReconLens</h1>
-  <p>Passive reconnaissance. No active scanning. No payloads.</p>
-  
-  <form hx-get="/api/passive/domain" hx-target="#out" hx-indicator="#load">
-    <input name="domain" placeholder="labs.hellnrock.com" required>
-    <button>Analyze</button>
-    <span id="load" class="htmx-indicator" style="color: #C7B182;">⏳...</span>
-  </form>
-  
-  <pre id="out"></pre>
-  
-  <div class="note">
-    All data from public sources (crt.sh, HackerTarget, Shodan IDB, Wayback, DNS).<br>
-    <i>Nota: Si la app está dormida (Render Free Tier), la primera carga puede tardar hasta 50s.</i>
+  <div class="container">
+    <header>
+      <div class="logo">
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+          <polygon points="50,10 85,35 70,80 30,80 15,35" />
+          <polygon points="50,10 15,35 50,50" />
+          <polygon points="50,10 85,35 50,50" />
+          <polygon points="15,35 30,80 50,50" />
+          <polygon points="85,35 70,80 50,50" />
+          <polygon points="30,80 70,80 50,50" />
+          <line x1="50" y1="10" x2="50" y2="50" />
+          <line x1="15" y1="35" x2="85" y2="35" />
+          <line x1="30" y1="80" x2="70" y2="80" />
+        </svg>
+      </div>
+      <h1>RECONLENS</h1>
+      <p class="subtitle">PASSIVE RECONNAISSANCE · NO ACTIVE SCANNING</p>
+    </header>
+
+    <form hx-get="/api/passive/domain" hx-target="#out" hx-indicator="#load">
+      <div class="input-wrapper">
+        <input name="domain" placeholder="labs.hellnrock.com" required autocomplete="off" spellcheck="false">
+      </div>
+      <button type="submit">
+        <span>ANALYZE</span>
+        <span id="load" class="htmx-indicator">[...]</span>
+      </button>
+    </form>
+
+    <pre id="out">// Waiting for target domain input...</pre>
+
+    <div class="note">
+      Public sources: <span>crt.sh</span> · <span>HackerTarget</span> · <span>Shodan InternetDB</span> · <span>Wayback</span> · <span>DNS</span><br>
+      <i>Render Free Tier: first request after idle state may take up to 50s</i>
+    </div>
   </div>
+
+  <footer>
+    HELLNROCK LABS
+  </footer>
 </body>
 </html>
 """
