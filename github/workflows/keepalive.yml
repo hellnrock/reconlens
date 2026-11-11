@@ -1,0 +1,15 @@
+name: Keep Render Awake
+
+on:
+  schedule:
+    # Se ejecuta cada 10 minutos 
+    - cron: '*/10 * * * *'
+  workflow_dispatch: 
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render App
+        run: |
+          curl -s https://reconlens-ga51.onrender.com/healthz
