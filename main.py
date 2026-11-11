@@ -153,14 +153,13 @@ async def health():
 # ---------- UI ----------
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    return """
-<!doctype html>
+    html_content = """<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<title>ReconLens — HellNRock Labs</title>
+<title>ReconLens — HNR Labs</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://unpkg.com/htmx.org@2.0.3"></script>
+<script src="https://unpkg.com/htmx.org@2.0.3" crossorigin="anonymous"></script>
 <style>
   :root {
     --bg: #101010;
@@ -169,15 +168,14 @@ async def index():
     --gold: #C7B182;
     --gold-bright: #E5D5B3;
     --brand: #634F5F;
-    --brand-muted: #8a7a6a;
-    --border: #634F5F2E;
+    --brand-glow: rgba(99, 79, 95, 0.4);
+    --border: #634F5F40;
     --border-focus: #C7B182;
+    --muted: #8a7a6a;
   }
-
   * { box-sizing: border-box; }
-
   body {
-    font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     background: var(--bg);
     background-image: radial-gradient(circle at 1px 1px, #1a1a1a 1px, transparent 0);
     background-size: 24px 24px;
@@ -187,68 +185,54 @@ async def index():
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 60px 20px 40px;
+    padding: 0 20px 40px;
   }
-
-  .container {
+  .brand-bar {
     width: 100%;
-    max-width: 720px;
+    height: 4px;
+    background: var(--brand);
+    box-shadow: 0 0 8px var(--brand-glow);
+    margin-bottom: 40px;
   }
-
-  header {
-    text-align: center;
-    margin-bottom: 24px;
-  }
-
+  .container { width: 100%; max-width: 680px; }
+  header { text-align: center; margin-bottom: 32px; }
   .icosahedron-center-wrapper {
     display: flex;
     justify-content: center;
     align-items: center;
-    margin: 10px 0 20px;
+    margin: 0 auto 16px;
   }
-
   .central-icosahedron {
-    width: min(320px, 75vw);
-    height: min(320px, 75vw);
+    width: 100px;
+    height: 100px;
     display: block;
     touch-action: none;
-    filter: drop-shadow(0 0 12px rgba(199, 177, 130, 0.25));
+    filter: drop-shadow(0 0 10px var(--brand-glow));
   }
-
   h1 {
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 600;
-    letter-spacing: 0.18em;
-    margin: 0 0 8px;
+    letter-spacing: 0.2em;
+    margin: 0 0 6px;
     color: var(--gold-bright);
     text-transform: uppercase;
   }
-
   .subtitle {
-    color: var(--brand-muted);
-    font-size: 11px;
-    letter-spacing: 0.1em;
+    color: var(--brand);
+    font-size: 10px;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
+    font-weight: 600;
     margin: 0;
   }
-
-  form {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 28px;
-  }
-
-  .input-wrapper {
-    position: relative;
-    flex: 1;
-  }
-
+  form { display: flex; gap: 10px; margin-bottom: 24px; }
+  .input-wrapper { position: relative; flex: 1; }
   input {
     width: 100%;
     background: var(--surface);
     border: 1px solid var(--border);
     color: var(--gold-bright);
-    padding: 14px 16px;
+    padding: 12px 16px;
     border-radius: 4px;
     font-family: inherit;
     font-size: 13px;
@@ -256,26 +240,20 @@ async def index():
     outline: none;
     transition: all 0.2s ease;
   }
-
   input:focus {
     border-color: var(--border-focus);
     background: var(--surface-hover);
     box-shadow: 0 0 12px rgba(199, 177, 130, 0.12);
   }
-
-  input::placeholder {
-    color: var(--brand-muted);
-    opacity: 0.6;
-  }
-
+  input::placeholder { color: var(--muted); opacity: 0.6; }
   button {
     background: transparent;
     color: var(--gold);
-    border: 1px solid var(--gold);
-    padding: 14px 24px;
+    border: 1px solid var(--brand);
+    padding: 12px 22px;
     border-radius: 4px;
     font-family: inherit;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.12em;
     cursor: pointer;
@@ -285,18 +263,16 @@ async def index():
     gap: 8px;
     white-space: nowrap;
   }
-
   button:hover {
-    background: var(--gold);
-    color: var(--bg);
-    box-shadow: 0 0 16px rgba(199, 177, 130, 0.25);
+    background: var(--brand);
+    color: var(--gold-bright);
+    box-shadow: 0 0 14px var(--brand-glow);
   }
-
   #out {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 4px;
-    padding: 20px;
+    padding: 18px;
     min-height: 140px;
     font-size: 12px;
     line-height: 1.6;
@@ -305,88 +281,51 @@ async def index():
     word-break: break-word;
     color: var(--gold);
   }
-
   .htmx-indicator {
     display: none;
     color: var(--gold-bright);
-    font-size: 12px;
+    font-size: 11px;
     letter-spacing: 0.05em;
     animation: pulse 1.5s infinite;
   }
-
-  .htmx-request .htmx-indicator {
-    display: inline-block;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 0.3; }
-    50% { opacity: 1; }
-  }
-
+  .htmx-request .htmx-indicator { display: inline-block; }
+  @keyframes pulse { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
   .note {
-    margin-top: 36px;
+    margin-top: 32px;
     text-align: center;
-    color: var(--brand-muted);
+    color: var(--muted);
     font-size: 11px;
     line-height: 1.8;
     letter-spacing: 0.04em;
     border-top: 1px solid var(--border);
-    padding-top: 20px;
+    padding-top: 18px;
   }
-
-  .note span {
-    color: var(--brand);
-    font-weight: 600;
-  }
-
+  .note span { color: var(--brand); font-weight: 600; }
   footer {
-    margin-top: 48px;
+    margin-top: 40px;
     font-size: 10px;
     letter-spacing: 0.12em;
-    color: var(--brand-muted);
+    color: var(--muted);
     text-transform: uppercase;
     opacity: 0.85;
     text-align: center;
   }
-
-  footer a {
-    color: var(--gold);
-    text-decoration: none;
-    transition: color 0.2s;
-  }
-
-  footer a:hover {
-    color: var(--gold-bright);
-  }
+  footer a { color: var(--gold); text-decoration: none; transition: color 0.2s; }
+  footer a:hover { color: var(--gold-bright); }
 </style>
 </head>
 <body>
+  <div class="brand-bar"></div>
   <div class="container">
     <header>
       <div class="icosahedron-center-wrapper">
-        <canvas id="geo" class="central-icosahedron" height="640" width="640"></canvas>
+        <canvas id="geo" class="central-icosahedron" height="200" width="200"></canvas>
       </div>
       <h1>RECONLENS</h1>
       <p class="subtitle">PASSIVE RECONNAISSANCE · NO ACTIVE SCANNING</p>
     </header>
 
-    <form hx-get="/api/passive/domain" 
-          hx-target="#out" 
-          hx-indicator="#load"
-          hx-on::after-request="
-            const el = document.getElementById('out');
-            if (el && el.innerText) {
-              let text = el.innerText
-                .replace(/blob:https?:\\/\\/[^\\s\\n\"']+/g, '[REDACTED]')
-                .replace(/(?:api_key|token|secret|auth|key)[=:]\\s*[\"']?[a-zA-Z0-9_\\.-]+[\"']?/gi, '[REDACTED]')
-                .replace(/https?:\\/\\/[^\\s\\n]+/g, (m) => m.length > 80 ? m.slice(0, 60) + '…' : m);
-              
-              if (text.length > 4000) {
-                text = text.slice(0, 4000) + '\\n\\n… (output truncated)';
-              }
-              el.innerText = text;
-            }
-          ">
+    <form hx-get="/api/passive/domain" hx-target="#out" hx-indicator="#load">
       <div class="input-wrapper">
         <input name="domain" placeholder="labs.hellnrock.com" required autocomplete="off" spellcheck="false">
       </div>
@@ -410,76 +349,61 @@ async def index():
 
   <script>
     (function() {
-      const canvas = document.getElementById('geo');
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
+      setTimeout(function() {
+        console.clear();
+        console.log(
+          '%c HNR LABS %c SECURITY RESEARCH LAB ',
+          'background: #101010; color: #C7B182; padding: 4px 8px; font-weight: bold; border: 1px solid #634F5F; font-family: monospace;',
+          'background: #C7B182; color: #101010; padding: 4px 8px; font-weight: bold; font-family: monospace;'
+        );
+      }, 200);
+    })();
 
+    document.body.addEventListener('htmx:afterRequest', function(e) {
+      const el = document.getElementById('out');
+      if (el && el.innerText) {
+        el.innerText = el.innerText
+          .replace(/blob:[^\\s\\n"']+/g, '[REDACTED_BLOB]')
+          .replace(/(?:api_key|token|secret|auth)[=:]\\s*["']?[a-zA-Z0-9_\\.-]+["']?/gi, '[REDACTED_KEY]');
+      }
+    });
+
+    (function() {
+      const c = document.getElementById('geo');
+      if (!c) return;
+      const ctx = c.getContext('2d');
       const t = (1 + Math.sqrt(5)) / 2;
-      const vertices = [
-        [-1,  t,  0], [ 1,  t,  0], [-1, -t,  0], [ 1, -t,  0],
-        [ 0, -1,  t], [ 0,  1,  t], [ 0, -1, -t], [ 0,  1, -t],
-        [ t,  0, -1], [ t,  0,  1], [-t,  0, -1], [-t,  0,  1]
-      ];
-
-      const edges = [];
-      for (let i = 0; i < vertices.length; i++) {
-        for (let j = i + 1; j < vertices.length; j++) {
-          const dx = vertices[i][0] - vertices[j][0];
-          const dy = vertices[i][1] - vertices[j][1];
-          const dz = vertices[i][2] - vertices[j][2];
-          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-          if (Math.abs(dist - 2) < 0.1) {
-            edges.push([i, j]);
-          }
+      const v = [[-1,t,0],[1,t,0],[-1,-t,0],[1,-t,0],[0,-1,t],[0,1,t],[0,-1,-t],[0,1,-t],[t,0,-1],[t,0,1],[-t,0,-1],[-t,0,1]];
+      const ed = [];
+      for(let i=0;i<v.length;i++){
+        for(let j=i+1;j<v.length;j++){
+          const d = Math.hypot(v[i][0]-v[j][0], v[i][1]-v[j][1], v[i][2]-v[j][2]);
+          if(Math.abs(d-2)<0.1) ed.push([i,j]);
         }
       }
-
-      let angleX = 0;
-      let angleY = 0;
-
-      function draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        const cx = canvas.width / 2;
-        const cy = canvas.height / 2;
-        const scale = 140;
-
-        angleX += 0.006;
-        angleY += 0.009;
-
-        const cosX = Math.cos(angleX), sinX = Math.sin(angleX);
-        const cosY = Math.cos(angleY), sinY = Math.sin(angleY);
-
-        const projected = vertices.map(v => {
-          let x = v[0] * cosY - v[2] * sinY;
-          let z = v[0] * sinY + v[2] * cosY;
-          let y = v[1];
-
-          let y2 = y * cosX - z * sinX;
-          let z2 = y * sinX + z * cosX;
-
-          return {
-            x: cx + x * scale,
-            y: cy + y2 * scale
-          };
+      let ax=0, ay=0;
+      function render(){
+        ctx.clearRect(0,0,c.width,c.height);
+        const cx=c.width/2, cy=c.height/2, s=45;
+        ax+=0.005; ay+=0.008;
+        const cxO=Math.cos(ax), sxO=Math.sin(ax), cyO=Math.cos(ay), syO=Math.sin(ay);
+        const pts = v.map(p => {
+          let x = p[0]*cyO - p[2]*syO;
+          let z = p[0]*syO + p[2]*cyO;
+          let y = p[1]*cxO - z*sxO;
+          return { x: cx + x*s, y: cy + y*s };
         });
-
         ctx.strokeStyle = '#C7B182';
-        ctx.lineWidth = 1.5;
-
-        edges.forEach(edge => {
-          const p1 = projected[edge[0]];
-          const p2 = projected[edge[1]];
+        ctx.lineWidth = 1.2;
+        ed.forEach(e => {
           ctx.beginPath();
-          ctx.moveTo(p1.x, p1.y);
-          ctx.lineTo(p2.x, p2.y);
+          ctx.moveTo(pts[e[0]].x, pts[e[0]].y);
+          ctx.lineTo(pts[e[1]].x, pts[e[1]].y);
           ctx.stroke();
         });
-
-        requestAnimationFrame(draw);
+        requestAnimationFrame(render);
       }
-
-      draw();
+      render();
     })();
   </script>
 </body>
