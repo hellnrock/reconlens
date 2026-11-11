@@ -811,6 +811,24 @@ INDEX_TEMPLATE = """<!doctype html>
       }
       render();
     })();
+        document.getElementById('copy-btn').addEventListener('click', function() {
+      const el = document.getElementById('out');
+      const text = el.innerText || el.textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        this.textContent = 'COPIED';
+        setTimeout(() => this.textContent = 'COPY', 1500);
+      }).catch(() => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        document.execCommand('copy');
+        sel.removeAllRanges();
+        this.textContent = 'COPIED';
+        setTimeout(() => this.textContent = 'COPY', 1500);
+      });
+    });
   </script>
 </body>
 </html>"""
