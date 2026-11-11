@@ -163,15 +163,16 @@ async def index():
 <script src="https://unpkg.com/htmx.org@2.0.3"></script>
 <style>
   :root {
-    --bg: #0a0a0a;
-    --surface: #121212;
-    --surface-hover: #181818;
+    --bg: #0a0b0f;
+    --surface: #101010;
+    --surface-hover: #161618;
     --text: #C7B182;
     --text-bright: #E5D5B3;
-    --muted: #7A6C5D;
+    --cyan: #00D4CE;
+    --muted: #7a6c5d;
     --accent: #634F5F;
-    --border: #332B31;
-    --border-focus: #C7B182;
+    --border: #634F5F40;
+    --border-focus: #00D4CE;
   }
 
   * { box-sizing: border-box; }
@@ -179,7 +180,7 @@ async def index():
   body {
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
     background: var(--bg);
-    background-image: radial-gradient(circle at 1px 1px, #1c181b 1px, transparent 0);
+    background-image: radial-gradient(circle at 1px 1px, #1a1b22 1px, transparent 0);
     background-size: 24px 24px;
     color: var(--text);
     margin: 0;
@@ -197,20 +198,20 @@ async def index():
 
   header {
     text-align: center;
-    margin-bottom: 48px;
+    margin-bottom: 44px;
   }
 
   .logo {
     width: 64px;
     height: 64px;
-    margin: 0 auto 24px;
+    margin: 0 auto 20px;
     position: relative;
   }
 
   .logo svg {
     width: 100%;
     height: 100%;
-    stroke: var(--text);
+    stroke: var(--cyan);
     stroke-width: 1.2;
     fill: none;
     opacity: 0.9;
@@ -223,10 +224,10 @@ async def index():
   }
 
   h1 {
-    font-size: 26px;
+    font-size: 24px;
     font-weight: 600;
-    letter-spacing: 0.15em;
-    margin: 0 0 10px;
+    letter-spacing: 0.18em;
+    margin: 0 0 8px;
     color: var(--text-bright);
     text-transform: uppercase;
   }
@@ -241,9 +242,8 @@ async def index():
 
   form {
     display: flex;
-    gap: 12px;
+    gap: 10px;
     margin-bottom: 28px;
-    position: relative;
   }
 
   .input-wrapper {
@@ -268,7 +268,7 @@ async def index():
   input:focus {
     border-color: var(--border-focus);
     background: var(--surface-hover);
-    box-shadow: 0 0 12px rgba(199, 177, 130, 0.08);
+    box-shadow: 0 0 12px rgba(0, 212, 206, 0.12);
   }
 
   input::placeholder {
@@ -278,14 +278,14 @@ async def index():
 
   button {
     background: transparent;
-    color: var(--text);
-    border: 1px solid var(--text);
+    color: var(--cyan);
+    border: 1px solid var(--cyan);
     padding: 14px 24px;
     border-radius: 4px;
     font-family: inherit;
     font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.12em;
     cursor: pointer;
     transition: all 0.2s ease;
     display: flex;
@@ -295,9 +295,9 @@ async def index():
   }
 
   button:hover {
-    background: var(--text);
+    background: var(--cyan);
     color: var(--bg);
-    box-shadow: 0 0 15px rgba(199, 177, 130, 0.2);
+    box-shadow: 0 0 16px rgba(0, 212, 206, 0.25);
   }
 
   #out {
@@ -312,12 +312,11 @@ async def index():
     white-space: pre-wrap;
     word-break: break-word;
     color: var(--text);
-    position: relative;
   }
 
   .htmx-indicator {
     display: none;
-    color: var(--text);
+    color: var(--cyan);
     font-size: 12px;
     letter-spacing: 0.05em;
     animation: pulse 1.5s infinite;
@@ -333,7 +332,7 @@ async def index():
   }
 
   .note {
-    margin-top: 40px;
+    margin-top: 36px;
     text-align: center;
     color: var(--muted);
     font-size: 11px;
@@ -348,10 +347,21 @@ async def index():
   footer {
     margin-top: 48px;
     font-size: 10px;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.12em;
     color: var(--muted);
     text-transform: uppercase;
-    opacity: 0.6;
+    opacity: 0.75;
+    text-align: center;
+  }
+
+  footer a {
+    color: var(--text);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  footer a:hover {
+    color: var(--cyan);
   }
 </style>
 </head>
@@ -375,7 +385,17 @@ async def index():
       <p class="subtitle">PASSIVE RECONNAISSANCE · NO ACTIVE SCANNING</p>
     </header>
 
-    <form hx-get="/api/passive/domain" hx-target="#out" hx-indicator="#load">
+    <form hx-get="/api/passive/domain" 
+          hx-target="#out" 
+          hx-indicator="#load"
+          hx-on::after-request="
+            const el = document.getElementById('out');
+            if (el) {
+              el.innerText = el.innerText
+                .replace(/blob:[^\\s\\n"']+/g, '[REDACTED_BLOB]')
+                .replace(/(?:api_key|token|secret|auth)[=:]\\s*["']?[a-zA-Z0-9_\\.-]+["']?/gi, '[REDACTED_KEY]');
+            }
+          ">
       <div class="input-wrapper">
         <input name="domain" placeholder="labs.hellnrock.com" required autocomplete="off" spellcheck="false">
       </div>
@@ -394,12 +414,12 @@ async def index():
   </div>
 
   <footer>
-    HELLNROCK LABS
+    POWERED BY <a href="https://labs.hellnrock.com" target="_blank" rel="noopener">LABS.HELLNROCK.COM</a>
   </footer>
 </body>
 </html>
 """
-
+    
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
