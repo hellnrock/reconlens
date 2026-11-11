@@ -15,8 +15,7 @@ CACHE_TTL = timedelta(hours=1)
 # ---------- MÓDULOS PASIVOS ----------
 
 async def crtsh(domain: str):
-    """Certificate Transparency con timeout de 30s + fallback a HackerTarget.
-    Siempre devuelve lista (nunca dict)."""
+    """Certificate Transparency con timeout de 30s + fallback a HackerTarget."""
     url = f"https://crt.sh/?q=%25.{domain}&output=json"
     try:
         async with httpx.AsyncClient(timeout=30.0) as c:
@@ -407,9 +406,9 @@ async def index():
     })();
   </script>
 </body>
-</html>
-"""
-    
+</html>"""
+    return html_content
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
