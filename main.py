@@ -1,9 +1,10 @@
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.concurrency import run_in_threadpool
 import httpx
 import asyncio
 import dns.resolver
+import re
 from datetime import datetime, timezone, timedelta
 
 app = FastAPI(title="ReconLens", version="0.1.0")
@@ -12,10 +13,23 @@ app = FastAPI(title="ReconLens", version="0.1.0")
 CACHE = {}
 CACHE_TTL = timedelta(hours=1)
 
+# ---------- SANITIZACIÓN (BACKEND) ----------
+
+def sanitize_data(data):
+    """Redacta secretos y blobs en el backend ANTES de enviarlos al cliente."""
+    if isinstance(data, dict):
+        return {k: sanitize_data(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [sanitize_data(i) for i in data]
+    elif isinstance(data, str):
+        data = re.sub(r'blob:[^\s\n"\']+', '[REDACTED_BLOB]', data)
+        data = re.sub(r'(?i)(api_key|token|secret|auth)[=:]\s*["\']?[a-zA-Z0-9_\.-]+["\']?', r'\1=[REDACTED_KEY]', data)
+        return data
+    return data
+
 # ---------- MÓDULOS PASIVOS ----------
 
 async def crtsh(domain: str):
-    """Certificate Transparency con timeout de 30s + fallback a HackerTarget."""
     url = f"https://crt.sh/?q=%25.{domain}&output=json"
     try:
         async with httpx.AsyncClient(timeout=30.0) as c:
@@ -33,15 +47,12 @@ async def crtsh(domain: str):
     except Exception:
         return await hackertarget(domain)
 
-
 async def hackertarget(domain: str):
-    """Plan B: HackerTarget. Siempre devuelve lista."""
     try:
         async with httpx.AsyncClient(timeout=15.0) as c:
             r = await c.get(f"https://api.hackertarget.com/hostsearch/?q={domain}")
             if r.status_code != 200 or "error" in r.text.lower():
                 return []
-
             subs = set()
             for line in r.text.strip().split("\n"):
                 if "," in line:
@@ -52,9 +63,7 @@ async def hackertarget(domain: str):
     except Exception:
         return []
 
-
 async def shodan_idb(domain: str):
-    """InternetDB solo acepta IP. Resolvemos la IP en threadpool para no bloquear."""
     def resolve_ip():
         try:
             answers = dns.resolver.resolve(domain, "A", lifetime=5)
@@ -77,9 +86,7 @@ async def shodan_idb(domain: str):
     except Exception:
         return {"error": "Shodan no disponible", "ip": ip}
 
-
 async def wayback(domain: str):
-    """Wayback con caché de 1h y límite de 100."""
     cache_key = f"wb_{domain}"
     now = datetime.now()
 
@@ -109,9 +116,7 @@ async def wayback(domain: str):
     except Exception:
         return []
 
-
 def dns_records_sync(domain: str):
-    """Versión síncrona que se ejecutará en un hilo separado."""
     out = {}
     for rtype in ("A", "AAAA", "MX", "NS", "TXT", "CNAME"):
         try:
@@ -134,7 +139,7 @@ async def passive(domain: str = Query(..., min_length=3)):
     )
     dns_data = await run_in_threadpool(dns_records_sync, domain)
 
-    return {
+    result = {
         "domain": domain,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "dns": dns_data,
@@ -143,11 +148,64 @@ async def passive(domain: str = Query(..., min_length=3)):
         "wayback_urls_sample": wb[:15],
         "disclaimer": "Passive recon only. No packets sent to target.",
     }
-
+    
+    return sanitize_data(result)
 
 @app.get("/healthz")
 async def health():
     return {"ok": True}
+
+# ---------- CANARY TOKENS (HONEYPOTS) ----------
+
+@app.get("/.env")
+@app.get("/api/.env")
+@app.get("/admin")
+@app.get("/wp-admin")
+@app.get("/config.php")
+async def canary_trap(request: Request):
+    client_ip = request.client.host
+    user_agent = request.headers.get("user-agent", "unknown")
+    
+    print(f"\n🚨 [CANARY ALERT] Honeytoken triggered!")
+    print(f"🔸 Path: {request.url.path}")
+    print(f"🔸 IP: {client_ip}")
+    print(f"🔸 User-Agent: {user_agent}\n")
+    
+    # 🕸️ TARPIT: Retraso de 3 segundos
+    await asyncio.sleep(3)
+    
+    troll_html = f"""
+    <!doctype html>
+    <html>
+    <head>
+        <title>403 Access Denied</title>
+        <style>
+            body {{ background-color: #101010; color: #C7B182; font-family: monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }}
+            .container {{ border: 1px solid #634F5F; padding: 40px; box-shadow: 0 0 20px rgba(99, 79, 95, 0.4); max-width: 500px; }}
+            h1 {{ font-size: 48px; margin: 0 0 10px 0; color: #E5D5B3; }}
+            .terminal {{ text-align: left; background: #0d0d0d; padding: 15px; border: 1px solid #634F5F40; font-size: 12px; margin-top: 20px; line-height: 1.5; }}
+            .blink {{ animation: blinker 1s linear infinite; }}
+            @keyframes blinker {{ 50% {{ opacity: 0; }} }}
+            .brand {{ color: #634F5F; font-weight: bold; letter-spacing: 2px; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>403</h1>
+            <p class="brand">ACCESS DENIED</p>
+            <div class="terminal">
+                &gt; INITIALIZING TRAP... [DONE]<br>
+                &gt; IDENTIFYING SOURCE... [BOT_DETECTED]<br>
+                &gt; STATUS: DEPLOYING COUNTERMEASURES...<br>
+                &gt; IP LOGGED: {client_ip}<br>
+                &gt; <span class="blink">_</span>
+            </div>
+            <p style="font-size: 10px; margin-top: 20px; color: #8a7a6a;">HELLNROCK SECURITY SYSTEMS</p>
+        </div>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=troll_html, status_code=403)
 
 # ---------- UI ----------
 @app.get("/", response_class=HTMLResponse)
@@ -357,15 +415,6 @@ async def index():
         );
       }, 200);
     })();
-
-    document.body.addEventListener('htmx:afterRequest', function(e) {
-      const el = document.getElementById('out');
-      if (el && el.innerText) {
-        el.innerText = el.innerText
-          .replace(/blob:[^\\s\\n"']+/g, '[REDACTED_BLOB]')
-          .replace(/(?:api_key|token|secret|auth)[=:]\\s*["']?[a-zA-Z0-9_\\.-]+["']?/gi, '[REDACTED_KEY]');
-      }
-    });
 
     (function() {
       const c = document.getElementById('geo');
