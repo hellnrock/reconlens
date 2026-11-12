@@ -171,7 +171,7 @@ SECRET_PATTERNS = [
     (re.compile(r"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"), "[REDACTED_JWT]"),
     (re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"), "[REDACTED_AWS_KEY]"),
     (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b"), "[REDACTED_GITHUB_TOKEN]"),
-    (re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}"), "[REDACTED_SLACK_TOKEN]"),
+    (re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b"), "[REDACTED_SLACK_TOKEN]"),
     (re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b"), "[REDACTED_GOOGLE_KEY]"),
     (
         re.compile(
@@ -596,6 +596,60 @@ DISCLAIMER = (
 )
 
 
+def build_coverage(dns_res: dict, subs: dict, shodan: dict, wb: dict, email_sec: dict) -> dict:
+    def mk(status, reason=None):
+        return {"status": status, "reason": reason} if reason else {"status": status}
+
+    # DNS: nxdomain es una respuesta válida; los demás errores dejan el módulo incompleto
+    errs = {t: e for t, e in dns_res.get("errors", {}).items() if e != "nxdomain"}
+    dns_cov = mk("partial", ", ".join(f"{t}:{e}" for t, e in errs.items())) if errs else mk("completed")
+
+    # Subdominios: según cuántas fuentes fallaron
+    atts = subs.get("attempts", [])
+    failed = [a for a in atts if a.get("status") == "error"]
+    if not atts:
+        sub_cov = mk("not_assessed")
+    elif len(failed) == len(atts):
+        sub_cov = mk("failed", "; ".join(f"{a['source']}: {a['reason']}" for a in failed))
+    elif failed:
+        sub_cov = mk("partial", "; ".join(f"{a['source']}: {a['reason']}" for a in failed))
+    else:
+        sub_cov = mk("completed")
+
+    # Shodan
+    st = shodan.get("status")
+    if st == "ok":
+        bad = [r for r in shodan.get("results", []) if r.get("status") == "error"]
+        shodan_cov = mk("partial", f"{len(bad)} IP con error") if bad else mk("completed")
+    elif st in ("no_ip", "no_public_ip"):
+        shodan_cov = mk("not_assessed", st)
+    else:
+        shodan_cov = mk("failed", st)
+
+    # Correo (solo admin)
+    es = email_sec.get("status")
+    email_cov = {
+        "ok": mk("completed"),
+        "partial": mk("partial", "errores DNS"),
+        "admin_only": mk("not_assessed", "admin_only"),
+    }.get(es, mk("failed", es))
+
+    # Wayback
+    wb_cov = mk("completed") if wb.get("status") == "ok" else mk("failed", wb.get("reason"))
+
+    na = mk("not_assessed", "module_not_available")
+    return {
+        "dns": dns_cov,
+        "subdomains": sub_cov,
+        "shodan": shodan_cov,
+        "email_security": email_cov,
+        "wayback": wb_cov,
+        "tls": na,
+        "http_security": na,
+        "technology": na,
+    }
+
+
 def assemble(domain: str, admin: bool, dns_res: dict, subs: dict, shodan: dict, wb: dict, email_sec: dict) -> dict:
     lim = ADMIN_LIMITS if admin else USER_LIMITS
 
@@ -652,6 +706,7 @@ def assemble(domain: str, admin: bool, dns_res: dict, subs: dict, shodan: dict, 
         "findings": findings,
         "findings_total": findings_total,
         "findings_status": findings_status,
+        "assessment_coverage": build_coverage(dns_res, subs, shodan, wb, email_sec),
         "warnings": warnings,
         "disclaimer": DISCLAIMER,
     }
