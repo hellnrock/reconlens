@@ -634,8 +634,14 @@ def build_coverage(dns_res: dict, subs: dict, shodan: dict, wb: dict, email_sec:
         "admin_only": mk("not_assessed", "admin_only"),
     }.get(es, mk("failed", es))
 
-    # Wayback
-    wb_cov = mk("completed") if wb.get("status") == "ok" else mk("failed", wb.get("reason"))
+    # Wayback: empty no es error, fue consulta válida sin resultados
+    wst = wb.get("status")
+    if wst == "ok":
+        wb_cov = mk("completed")
+    elif wst == "empty":
+        wb_cov = mk("completed", "empty_result")
+    else:
+        wb_cov = mk("failed", wb.get("reason") or wst)
 
     na = mk("not_assessed", "module_not_available")
     return {
@@ -679,7 +685,7 @@ def assemble(domain: str, admin: bool, dns_res: dict, subs: dict, shodan: dict, 
             warnings.append(f"{a['source']} failed ({a['reason']}): subdomain list may be incomplete.")
     if wb.get("status") == "error":
         warnings.append(f"wayback failed ({wb.get('reason')}): archived URLs were NOT checked, so findings=0 means not reviewed.")
-    findings_status = "checked" if wb.get("status") == "ok" else "not_checked"
+    findings_status = "checked" if wb.get("status") in ("ok", "empty") else "not_checked"
 
     sub_items = subs.get("items", [])
     result = {
