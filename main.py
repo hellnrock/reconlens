@@ -793,6 +793,19 @@ async def passive(request: Request, domain: str = Query(..., min_length=3, max_l
     return JSONResponse(assemble(domain, admin, dns_res, subs, shodan, wb, email_sec))
 
 
+@app.get("/api/admin/verify")
+async def admin_verify(request: Request):
+    """Solo comprueba el token (mismo control y mismo límite de intentos fallidos que el análisis)."""
+    ip = client_ip(request)
+    admin = await authenticate(request, ip)
+    if not admin:
+        raise HTTPException(401, "token requerido")
+    retry = ADMIN_LIMITER.check(ip)
+    if retry:
+        raise HTTPException(429, "rate limit", headers={"Retry-After": str(retry)})
+    return {"ok": True, "tier": "admin"}
+
+
 @app.get("/healthz")
 async def health():
     return {"ok": True}
@@ -1032,6 +1045,29 @@ INDEX_TEMPLATE = """<!doctype html>
   footer { margin-top: 40px; font-size: 10px; letter-spacing: 0.12em; color: var(--muted); text-transform: uppercase; opacity: 0.85; text-align: center; }
   footer a { color: var(--gold); text-decoration: none; transition: color 0.2s; }
   footer a:hover { color: var(--gold-bright); }
+
+  :root {
+    --ok: #3fb950;
+    --ok-bg: rgba(63, 185, 80, 0.07);
+    --ok-border: rgba(63, 185, 80, 0.35);
+    --err: #e5534b;
+    --err-bg: rgba(229, 83, 75, 0.07);
+    --err-border: rgba(229, 83, 75, 0.35);
+  }
+  .token-row { display: flex; gap: 10px; margin-top: 10px; }
+  .token-row .input-wrapper { margin-top: 0; }
+  button.verify-btn { color: var(--ok); background: var(--ok-bg); border-color: var(--ok-border); letter-spacing: 0.14em; text-transform: uppercase; }
+  button.verify-btn:hover { background: rgba(63, 185, 80, 0.14); border-color: var(--ok); color: var(--ok); box-shadow: 0 0 12px rgba(63, 185, 80, 0.18); }
+  button.verify-btn:focus-visible { outline: 2px solid var(--ok); outline-offset: 2px; }
+  button.verify-btn:disabled { opacity: 0.6; cursor: default; }
+  .verify-status { display: none; flex-direction: column; gap: 6px; margin-top: 10px; padding: 12px 16px; border-radius: 6px; border: 1px solid var(--ok-border); background: var(--ok-bg); }
+  .verify-status.show { display: flex; }
+  .verify-label { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ok); opacity: 0.85; }
+  .verify-msg { font-size: 13px; font-weight: 600; letter-spacing: 0.06em; color: var(--ok); }
+  .verify-status.err { border-color: var(--err-border); background: var(--err-bg); }
+  .verify-status.err .verify-label, .verify-status.err .verify-msg { color: var(--err); }
+  .verify-status.warn { border-color: var(--border); background: transparent; }
+  .verify-status.warn .verify-label, .verify-status.warn .verify-msg { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -1057,8 +1093,15 @@ INDEX_TEMPLATE = """<!doctype html>
 
     <details>
       <summary>ADMIN</summary>
-      <div class="input-wrapper">
-        <input id="tok" type="password" placeholder="admin token (opcional)" autocomplete="off" spellcheck="false">
+      <div class="token-row">
+        <div class="input-wrapper">
+          <input id="tok" type="password" placeholder="admin token (opcional)" autocomplete="off" spellcheck="false">
+        </div>
+        <button type="button" id="verify-btn" class="verify-btn">VERIFY</button>
+      </div>
+      <div id="verify-status" class="verify-status" role="status" aria-live="polite">
+        <span id="verify-label" class="verify-label"></span>
+        <span id="verify-msg" class="verify-msg"></span>
       </div>
     </details>
 
@@ -1119,6 +1162,39 @@ INDEX_TEMPLATE = """<!doctype html>
           load.classList.remove('on');
         }
       });
+    })();
+
+    // Verificación del token: solo vive en memoria de la página, no se guarda en el navegador.
+    (function() {
+      const tok = document.getElementById('tok');
+      const btn = document.getElementById('verify-btn');
+      const box = document.getElementById('verify-status');
+      function show(kind, label, text) {
+        box.className = 'verify-status show ' + kind;
+        document.getElementById('verify-label').textContent = label;
+        document.getElementById('verify-msg').textContent = text;
+      }
+      async function verify() {
+        const token = tok.value;
+        if (!token) { show('warn', 'ADMIN ACCESS', 'ENTER A TOKEN FIRST'); return; }
+        btn.disabled = true;
+        btn.textContent = 'CHECKING...';
+        try {
+          const r = await fetch('/api/admin/verify', { headers: { 'X-Admin-Token': token } });
+          if (r.ok) show('ok', 'ADMIN ACCESS', 'TOKEN VERIFIED');
+          else if (r.status === 429) show('err', 'ACCESS DENIED', 'TOO MANY ATTEMPTS, TRY LATER');
+          else if (r.status === 401) show('err', 'ACCESS DENIED', 'INVALID TOKEN');
+          else show('err', 'ERROR', 'COULD NOT VERIFY (' + r.status + ')');
+        } catch (e) {
+          show('err', 'ERROR', 'NETWORK ERROR');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'VERIFY';
+        }
+      }
+      btn.addEventListener('click', verify);
+      tok.addEventListener('keydown', function(ev) { if (ev.key === 'Enter') { ev.preventDefault(); verify(); } });
+      tok.addEventListener('input', function() { box.className = 'verify-status'; });
     })();
 
     (function() {
